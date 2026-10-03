@@ -6,23 +6,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
-    primary = CyanAccent,
-    onPrimary = Color.Black,
-    primaryContainer = CockpitSurfaceVariant,
-    onPrimaryContainer = CyanAccent,
-    secondary = BlueDrive,
-    onSecondary = Color.Black,
-    secondaryContainer = CockpitSurfaceVariant,
-    onSecondaryContainer = Color.White,
-    tertiary = EmeraldSafe,
-    background = CockpitBackground,
-    onBackground = TextPrimary,
-    surface = CockpitSurface,
-    onSurface = TextPrimary,
-    surfaceVariant = CockpitSurfaceVariant,
-    onSurfaceVariant = TextSecondary,
-    error = SevereRed,
-    onError = Color.White
+    primary = RadiantGoldPrimary,
+    onPrimary = OnGoldPrimary,
+    primaryContainer = RadiantGoldContainer,
+    onPrimaryContainer = OnGoldContainer,
+    secondary = MintSecondary,
+    onSecondary = OnMintSecondary,
+    secondaryContainer = MintSecondaryContainer,
+    onSecondaryContainer = OnMintSecondaryContainer,
+    tertiary = WarmAmberTertiary,
+    onTertiary = OnGoldPrimary,
+    tertiaryContainer = TertiaryContainer,
+    background = EmeraldBackground,
+    onBackground = TextOnSurface,
+    surface = EmeraldBackground,
+    onSurface = TextOnSurface,
+    surfaceVariant = EmeraldSurfaceHigh,
+    onSurfaceVariant = TextOnSurfaceVariant,
+    error = HazardError,
+    onError = OnError,
+    errorContainer = HazardErrorContainer,
+    outline = OutlineColor,
+    outlineVariant = OutlineVariant
 )
 
 @Composable

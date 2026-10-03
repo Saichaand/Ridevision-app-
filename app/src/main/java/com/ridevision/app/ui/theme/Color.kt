@@ -2,20 +2,35 @@ package com.ridevision.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val CockpitBackground = Color(0xFF0B0F19)
-val CockpitSurface = Color(0xFF131B2B)
-val CockpitSurfaceVariant = Color(0xFF1B273D)
-val CockpitCardBorder = Color(0xFF26354D)
+// Emerald Telemetry Theme Palette
+val EmeraldBackground = Color(0xFF01180C)
+val EmeraldSurfaceLowest = Color(0xFF001208)
+val EmeraldSurfaceLow = Color(0xFF072014)
+val EmeraldSurface = Color(0xFF0B2418)
+val EmeraldSurfaceHigh = Color(0xFF162F22)
+val EmeraldSurfaceHighest = Color(0xFF213A2C)
+val EmeraldSurfaceBright = Color(0xFF263E30)
 
-val CyanAccent = Color(0xFF00D2FF)
-val CyanAccentGlow = Color(0x3300D2FF)
-val BlueDrive = Color(0xFF38BDF8)
-val EmeraldSafe = Color(0xFF10B981)
+val RadiantGoldPrimary = Color(0xFFFFD56D)
+val RadiantGoldContainer = Color(0xFFE5B842)
+val RadiantGoldDim = Color(0xFFEEC14A)
+val OnGoldPrimary = Color(0xFF3E2E00)
+val OnGoldContainer = Color(0xFF614900)
 
-val SevereRed = Color(0xFFFF3B30)
-val ModerateOrange = Color(0xFFFF9500)
-val MinorYellow = Color(0xFFFBBF24)
+val MintSecondary = Color(0xFFA4D1B6)
+val MintSecondaryFixed = Color(0xFFBFEDD1)
+val MintSecondaryContainer = Color(0xFF254F3A)
+val OnMintSecondary = Color(0xFF0C3825)
+val OnMintSecondaryContainer = Color(0xFF93BFA5)
 
-val TextPrimary = Color(0xFFF8FAFC)
-val TextSecondary = Color(0xFF94A3B8)
-val TextMuted = Color(0xFF64748B)
+val TextOnSurface = Color(0xFFCDE9D6)
+val TextOnSurfaceVariant = Color(0xFFD1C5AF)
+val OutlineColor = Color(0xFF9A907C)
+val OutlineVariant = Color(0xFF4E4635)
+
+val HazardError = Color(0xFFFFB4AB)
+val HazardErrorContainer = Color(0xFF93000A)
+val OnError = Color(0xFF690005)
+
+val WarmAmberTertiary = Color(0xFFFFD56F)
+val TertiaryContainer = Color(0xFFE1B956)

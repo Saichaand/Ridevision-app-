@@ -8,12 +8,11 @@ import androidx.lifecycle.viewModelScope
 import com.ridevision.app.R
 import com.ridevision.app.data.model.DetectionResult
 import com.ridevision.app.data.model.HazardWarning
-import com.ridevision.app.data.model.MunicipalDispatch
-import com.ridevision.app.data.model.PassedHazard
 import com.ridevision.app.data.model.Pothole
 import com.ridevision.app.data.model.PotholeStatus
+import com.ridevision.app.data.model.SafeRouteOption
 import com.ridevision.app.data.model.Severity
-import com.ridevision.app.data.model.TripPoint
+import com.ridevision.app.data.model.UserProfile
 import com.ridevision.app.data.repository.PotholeRepository
 import com.ridevision.app.data.repository.ReportResult
 import com.ridevision.app.data.repository.VoteResult
@@ -31,26 +30,17 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class AppTab(val label: String) {
-    SCANNER("AI Vision"),
-    RADAR("Hazard Radar"),
-    TRIP("Drive HUD"),
-    CIVIC("Civic Desk")
+    REPORT("Report"),
+    SAFE_ROUTE("Safe Route"),
+    HISTORY("History"),
+    PROFILE("Profile")
 }
 
-enum class SamplePreset(val label: String, val resId: Int?) {
-    SAMPLE_SEVERE("Severe Hazard", R.drawable.sample_severe_pothole),
-    SAMPLE_MODERATE("Moderate Hazard", R.drawable.sample_moderate_pothole),
-    SAMPLE_CLEAN("Clean Road", R.drawable.sample_clean_road),
-    CAMERA_CAPTURE("Camera / Pick", null)
+enum class TransportMode(val label: String) {
+    RIDE("Ride"),
+    CAR("Car"),
+    FLEET("Fleet")
 }
-
-data class CommuteRouteStep(
-    val name: String,
-    val lat: Double,
-    val lon: Double,
-    val heading: Float,
-    val speedKmh: Float
-)
 
 class RideVisionViewModel(
     private val repository: PotholeRepository = PotholeRepository()
@@ -58,87 +48,141 @@ class RideVisionViewModel(
 
     val potholes: StateFlow<List<Pothole>> = repository.potholes
 
-    private val _currentTab = MutableStateFlow(AppTab.SCANNER)
+    // Current Tab
+    private val _currentTab = MutableStateFlow(AppTab.REPORT)
     val currentTab: StateFlow<AppTab> = _currentTab.asStateFlow()
 
     // Location & Vehicle Telemetry
-    private val _currentLat = MutableStateFlow(12.9130) // Near SJEC Mangaluru
+    private val _currentLat = MutableStateFlow(37.7749)
     val currentLat: StateFlow<Double> = _currentLat.asStateFlow()
 
-    private val _currentLon = MutableStateFlow(74.8970)
+    private val _currentLon = MutableStateFlow(-122.4194)
     val currentLon: StateFlow<Double> = _currentLon.asStateFlow()
 
-    private val _currentHeading = MutableStateFlow(45f) // Heading Northeast towards SJEC gate
+    private val _currentStreetAddress = MutableStateFlow("Market St & 4th Ave, Downtown")
+    val currentStreetAddress: StateFlow<String> = _currentStreetAddress.asStateFlow()
+
+    private val _currentHeading = MutableStateFlow(42f)
     val currentHeading: StateFlow<Float> = _currentHeading.asStateFlow()
 
-    private val _currentSpeedKmh = MutableStateFlow(42f)
+    private val _currentSpeedKmh = MutableStateFlow(32f)
     val currentSpeedKmh: StateFlow<Float> = _currentSpeedKmh.asStateFlow()
 
-    private val _activeWarning = MutableStateFlow<HazardWarning?>(null)
+    // Rider Alert Radar Banner State
+    private val _isRadarAudioEnabled = MutableStateFlow(true)
+    val isRadarAudioEnabled: StateFlow<Boolean> = _isRadarAudioEnabled.asStateFlow()
+
+    private val _activeWarning = MutableStateFlow<HazardWarning?>(
+        HazardWarning(
+            potholeId = "pothole-88219",
+            distanceMeters = 300,
+            angularDeviationDeg = 4.2f,
+            severity = Severity.SEVERE,
+            address = "Grand Ave & 8th St (14cm Crater ahead)",
+            confirmationCount = 24,
+            message = "Warning you of road hazards 300m ahead",
+            isUrgent = true
+        )
+    )
     val activeWarning: StateFlow<HazardWarning?> = _activeWarning.asStateFlow()
 
-    // Vision Detection State
-    private val _selectedPreset = MutableStateFlow(SamplePreset.SAMPLE_SEVERE)
-    val selectedPreset: StateFlow<SamplePreset> = _selectedPreset.asStateFlow()
-
+    // Vision / Viewfinder State
     private val _currentBitmap = MutableStateFlow<Bitmap?>(null)
     val currentBitmap: StateFlow<Bitmap?> = _currentBitmap.asStateFlow()
 
-    private val _detectionResult = MutableStateFlow<DetectionResult?>(null)
+    private val _detectionResult = MutableStateFlow<DetectionResult?>(
+        DetectionResult(
+            detections = emptyList(),
+            processingTimeMs = 18,
+            maxConfidence = 0.984f,
+            roadConditionScore = 96,
+            summary = "98.4% Confidence • 14.2 cm Depth",
+            estimatedDepthCm = 14.2f
+        )
+    )
     val detectionResult: StateFlow<DetectionResult?> = _detectionResult.asStateFlow()
 
-    // Filters
-    private val _cityFilter = MutableStateFlow("All")
-    val cityFilter: StateFlow<String> = _cityFilter.asStateFlow()
+    private val _flashTrigger = MutableSharedFlow<Unit>()
+    val flashTrigger: SharedFlow<Unit> = _flashTrigger.asSharedFlow()
 
-    private val _severityFilter = MutableStateFlow("All")
-    val severityFilter: StateFlow<String> = _severityFilter.asStateFlow()
+    private val _submissionConfirmed = MutableStateFlow(false)
+    val submissionConfirmed: StateFlow<Boolean> = _submissionConfirmed.asStateFlow()
 
-    // Trip Session
-    private val _isTripActive = MutableStateFlow(false)
-    val isTripActive: StateFlow<Boolean> = _isTripActive.asStateFlow()
+    // Safe Route Navigation State
+    val safeRouteOptions = listOf(
+        SafeRouteOption(
+            id = "route-1",
+            name = "Grand Ave & Park Bypass",
+            etaMin = 12,
+            distanceKm = 4.2f,
+            potholeCount = 1,
+            conditionIndex = 96,
+            riskLabel = "Optimal",
+            description = "Only 1 shallow crack • 4.2 km",
+            isOptimal = true
+        ),
+        SafeRouteOption(
+            id = "route-2",
+            name = "Pine Street Diagonal",
+            etaMin = 14,
+            distanceKm = 3.9f,
+            potholeCount = 8,
+            conditionIndex = 74,
+            riskLabel = "Moderate",
+            description = "8 detected craters • 3.9 km",
+            isOptimal = false
+        ),
+        SafeRouteOption(
+            id = "route-3",
+            name = "Industrial Blvd direct",
+            etaMin = 10,
+            distanceKm = 3.9f,
+            potholeCount = 15,
+            conditionIndex = 42,
+            riskLabel = "Severe Risk",
+            description = "15 Severe potholes • High impact",
+            isOptimal = false
+        )
+    )
 
-    private val _tripDistanceMeters = MutableStateFlow(0.0)
-    val tripDistanceMeters: StateFlow<Double> = _tripDistanceMeters.asStateFlow()
+    private val _selectedRouteId = MutableStateFlow("route-1")
+    val selectedRouteId: StateFlow<String> = _selectedRouteId.asStateFlow()
 
-    private val _tripPassedHazards = MutableStateFlow<List<PassedHazard>>(emptyList())
-    val tripPassedHazards: StateFlow<List<PassedHazard>> = _tripPassedHazards.asStateFlow()
+    private val _transportMode = MutableStateFlow(TransportMode.RIDE)
+    val transportMode: StateFlow<TransportMode> = _transportMode.asStateFlow()
 
-    // Simulation
-    private val _isSimulationPlaying = MutableStateFlow(false)
-    val isSimulationPlaying: StateFlow<Boolean> = _isSimulationPlaying.asStateFlow()
+    private val _avoidHoles = MutableStateFlow(true)
+    val avoidHoles: StateFlow<Boolean> = _avoidHoles.asStateFlow()
 
-    private var simulationJob: Job? = null
-    private var simulationIndex = 0
+    private val _routeOrigin = MutableStateFlow("Market St & 4th Ave")
+    val routeOrigin: StateFlow<String> = _routeOrigin.asStateFlow()
 
-    // Notification / Toast Events
+    private val _routeDestination = MutableStateFlow("Tech Hub Metro Station")
+    val routeDestination: StateFlow<String> = _routeDestination.asStateFlow()
+
+    private val _isNavigating = MutableStateFlow(false)
+    val isNavigating: StateFlow<Boolean> = _isNavigating.asStateFlow()
+
+    // History & Registry Search / Filter State
+    private val _historySearchQuery = MutableStateFlow("")
+    val historySearchQuery: StateFlow<String> = _historySearchQuery.asStateFlow()
+
+    private val _historyFilterTab = MutableStateFlow("all") // "all", "pending", "progress", "repaired"
+    val historyFilterTab: StateFlow<String> = _historyFilterTab.asStateFlow()
+
+    // Profile State
+    private val _isLoginView = MutableStateFlow(false)
+    val isLoginView: StateFlow<Boolean> = _isLoginView.asStateFlow()
+
+    private val _userProfile = MutableStateFlow(UserProfile())
+    val userProfile: StateFlow<UserProfile> = _userProfile.asStateFlow()
+
+    // Feedback Toast / Event Message
     private val _userFeedback = MutableSharedFlow<String>()
     val userFeedback: SharedFlow<String> = _userFeedback.asSharedFlow()
 
-    // Mangaluru simulation route approaching NH 73 SJEC gate
-    private val mangaluruRoute = listOf(
-        CommuteRouteStep("Vamanjoor Junction Approach", 12.9110, 74.8945, 45f, 48f),
-        CommuteRouteStep("NH 73 Corridor (230m from hazard)", 12.9135, 74.8970, 42f, 44f),
-        CommuteRouteStep("NH 73 SJEC Gate Hazard Proximity", 12.9150, 74.8986, 40f, 25f),
-        CommuteRouteStep("Vamanjoor Post Office Pass", 12.9168, 74.9002, 45f, 38f),
-        CommuteRouteStep("Moodbidri Highway Acceleration", 12.9190, 74.9025, 50f, 52f)
-    )
-
-    init {
-        // Initial warning check
-        checkWarning()
-    }
-
     fun setTab(tab: AppTab) {
         _currentTab.value = tab
-    }
-
-    fun setCityFilter(city: String) {
-        _cityFilter.value = city
-    }
-
-    fun setSeverityFilter(severity: String) {
-        _severityFilter.value = severity
     }
 
     fun updateLocation(lat: Double, lon: Double, heading: Float, speed: Float) {
@@ -146,57 +190,109 @@ class RideVisionViewModel(
         _currentLon.value = lon
         _currentHeading.value = heading
         _currentSpeedKmh.value = speed
-        checkWarning()
-        if (_isTripActive.value) {
-            checkPassedHazards(lat, lon)
-        }
     }
 
-    private fun checkWarning() {
-        val warning = GeoMatchingService.checkWarningAhead(
-            currentLat = _currentLat.value,
-            currentLon = _currentLon.value,
-            headingDeg = _currentHeading.value,
-            potholes = repository.potholes.value
-        )
-        _activeWarning.value = warning
+    fun toggleRadarAudio() {
+        _isRadarAudioEnabled.value = !_isRadarAudioEnabled.value
     }
 
-    fun dismissWarning() {
-        _activeWarning.value = null
-    }
-
-    // Vision Detection
-    fun loadPreset(context: Context, preset: SamplePreset) {
-        _selectedPreset.value = preset
-        preset.resId?.let { resId ->
-            val bmp = BitmapFactory.decodeResource(context.resources, resId)
+    // Photo / Optical Capture
+    fun loadInitialSample(context: Context) {
+        if (_currentBitmap.value == null) {
+            val bmp = BitmapFactory.decodeResource(context.resources, R.drawable.sample_severe_pothole)
             _currentBitmap.value = bmp
-            val isClean = (preset == SamplePreset.SAMPLE_CLEAN)
-            runDetection(bmp, isClean)
+            runDetection(bmp)
         }
     }
 
     fun setCustomBitmap(bitmap: Bitmap) {
-        _selectedPreset.value = SamplePreset.CAMERA_CAPTURE
         _currentBitmap.value = bitmap
-        runDetection(bitmap, false)
+        triggerFlash()
+        runDetection(bitmap)
     }
 
-    fun runDetection(bitmap: Bitmap, isClean: Boolean = false) {
+    fun triggerFlash() {
         viewModelScope.launch {
-            val result = RoadHazardDetector.analyzeBitmap(bitmap, isClean)
+            _flashTrigger.emit(Unit)
+        }
+    }
+
+    fun runDetection(bitmap: Bitmap) {
+        viewModelScope.launch {
+            val result = RoadHazardDetector.analyzeBitmap(bitmap, false)
             _detectionResult.value = result
         }
     }
 
-    // Voting & Crowdsourcing
-    fun voteStillThere(potholeId: String) {
+    fun detectGps() {
+        viewModelScope.launch {
+            // Simulate instant GPS pinpoint to the downtown location
+            _currentLat.value = 37.7812
+            _currentLon.value = -122.4069
+            _currentStreetAddress.value = "Mission St & 3rd Ave, South of Market"
+            _userFeedback.emit("GPS Calibrated: Mission St & 3rd Ave")
+        }
+    }
+
+    fun submitComplaint(notes: String = "") {
+        viewModelScope.launch {
+            val res = repository.submitReport(
+                lat = _currentLat.value,
+                lon = _currentLon.value,
+                address = _currentStreetAddress.value,
+                severity = Severity.SEVERE,
+                notes = notes.ifBlank { "Deep road fissure logged via RideVision optical HUD scanner." }
+            )
+            _submissionConfirmed.value = true
+            _userFeedback.emit("Pothole Vector Published! 142 nearby riders alerted.")
+        }
+    }
+
+    fun dismissSubmissionPill() {
+        _submissionConfirmed.value = false
+    }
+
+    // Safe Route Controls
+    fun setTransportMode(mode: TransportMode) {
+        _transportMode.value = mode
+    }
+
+    fun toggleAvoidHoles() {
+        _avoidHoles.value = !_avoidHoles.value
+    }
+
+    fun selectRoute(routeId: String) {
+        _selectedRouteId.value = routeId
+    }
+
+    fun swapOriginDestination() {
+        val orig = _routeOrigin.value
+        _routeOrigin.value = _routeDestination.value
+        _routeDestination.value = orig
+    }
+
+    fun toggleNavigation() {
+        val next = !_isNavigating.value
+        _isNavigating.value = next
+        viewModelScope.launch {
+            _userFeedback.emit(if (next) "Cockpit HUD Live • Safe Navigation Started" else "Navigation Paused")
+        }
+    }
+
+    // History Controls
+    fun setHistoryFilter(filter: String) {
+        _historyFilterTab.value = filter
+    }
+
+    fun setHistorySearchQuery(query: String) {
+        _historySearchQuery.value = query
+    }
+
+    fun upvoteHazard(potholeId: String) {
         viewModelScope.launch {
             when (val res = repository.confirmStillThere(potholeId)) {
                 is VoteResult.Success -> {
                     _userFeedback.emit(res.message)
-                    checkWarning()
                 }
                 is VoteResult.CooldownActive -> {
                     _userFeedback.emit(res.message)
@@ -205,131 +301,23 @@ class RideVisionViewModel(
         }
     }
 
-    fun voteFixed(potholeId: String) {
+    // Profile Controls
+    fun setLoginView(isLogin: Boolean) {
+        _isLoginView.value = isLogin
+    }
+
+    fun toggleEarbudAudio(enabled: Boolean) {
+        _userProfile.value = _userProfile.value.copy(earbudAudioPing = enabled)
+    }
+
+    fun toggleHandlebarHaptics(enabled: Boolean) {
+        _userProfile.value = _userProfile.value.copy(handlebarHapticPulse = enabled)
+    }
+
+    fun performLogin(username: String) {
+        _isLoginView.value = false
         viewModelScope.launch {
-            when (val res = repository.confirmFixed(potholeId)) {
-                is VoteResult.Success -> {
-                    _userFeedback.emit(res.message)
-                    checkWarning()
-                }
-                is VoteResult.CooldownActive -> {
-                    _userFeedback.emit(res.message)
-                }
-            }
+            _userFeedback.emit("Authenticated as $username • Welcome back, Alex!")
         }
-    }
-
-    // Reporting
-    fun submitHazardReport(
-        lat: Double,
-        lon: Double,
-        address: String,
-        severity: Severity,
-        notes: String
-    ) {
-        viewModelScope.launch {
-            val res = repository.submitReport(lat, lon, address, severity, notes)
-            when (res) {
-                is ReportResult.Created -> {
-                    _userFeedback.emit("Hazard Registered! ID: ${res.pothole.id} (${res.pothole.city})")
-                }
-                is ReportResult.MergedExisting -> {
-                    _userFeedback.emit("15m Deduplication: Merged with existing hazard ${res.distanceMeters}m away (+1 verified)!")
-                }
-            }
-            checkWarning()
-        }
-    }
-
-    // Trip Session Management
-    fun toggleTrip() {
-        val willBeActive = !_isTripActive.value
-        _isTripActive.value = willBeActive
-        if (willBeActive) {
-            _tripDistanceMeters.value = 0.0
-            _tripPassedHazards.value = emptyList()
-            viewModelScope.launch {
-                _userFeedback.emit("Commuter Drive Mode Started — 250m Radar Active")
-            }
-        } else {
-            viewModelScope.launch {
-                _userFeedback.emit("Trip Completed. Passed ${_tripPassedHazards.value.size} registered hazard(s).")
-            }
-        }
-    }
-
-    private fun checkPassedHazards(lat: Double, lon: Double) {
-        val all = repository.potholes.value
-        val passed = _tripPassedHazards.value.toMutableList()
-
-        for (p in all) {
-            val dist = GeoMatchingService.haversineDistanceM(lat, lon, p.lat, p.lon).toFloat()
-            if (dist <= 28f && passed.none { it.pothole.id == p.id }) {
-                passed.add(PassedHazard(p, dist))
-            }
-        }
-        _tripPassedHazards.value = passed
-    }
-
-    // Route Simulation
-    fun toggleSimulation() {
-        if (_isSimulationPlaying.value) {
-            stopSimulation()
-        } else {
-            startSimulation()
-        }
-    }
-
-    private fun startSimulation() {
-        _isSimulationPlaying.value = true
-        simulationJob?.cancel()
-        simulationJob = viewModelScope.launch {
-            _userFeedback.emit("Simulation active: Commuter driving on NH 73 Mangaluru corridor")
-            while (isActive && _isSimulationPlaying.value) {
-                val step = mangaluruRoute[simulationIndex]
-                _currentLat.value = step.lat
-                _currentLon.value = step.lon
-                _currentHeading.value = step.heading
-                _currentSpeedKmh.value = step.speedKmh
-
-                if (_isTripActive.value) {
-                    _tripDistanceMeters.value += 120.0
-                    checkPassedHazards(step.lat, step.lon)
-                }
-
-                checkWarning()
-
-                delay(3000)
-                simulationIndex = (simulationIndex + 1) % mangaluruRoute.size
-            }
-        }
-    }
-
-    fun stopSimulation() {
-        _isSimulationPlaying.value = false
-        simulationJob?.cancel()
-        simulationJob = null
-    }
-
-    fun stepSimulation() {
-        simulationIndex = (simulationIndex + 1) % mangaluruRoute.size
-        val step = mangaluruRoute[simulationIndex]
-        updateLocation(step.lat, step.lon, step.heading, step.speedKmh)
-    }
-
-    fun getMunicipalDispatch(pothole: Pothole): MunicipalDispatch {
-        return GeoMatchingService.routeComplaint(
-            city = pothole.city,
-            address = pothole.address,
-            lat = pothole.lat,
-            lon = pothole.lon,
-            severity = pothole.severity,
-            notes = pothole.notes
-        )
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        simulationJob?.cancel()
     }
 }
